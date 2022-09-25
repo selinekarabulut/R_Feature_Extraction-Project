@@ -1,0 +1,4 @@
+# R_Feature_Extraction-Project
+Predictors of Party Leadership Tenure: Utilizing the Cox Proportional Hazard Model, Kernel Regularized Least Squares and Kernel Regression with Mixed Multivariate Data
+
+This research aims to look at the impact of the system-, country-, and individual-level characteristics on party leaders tenure by comparing the results of the regression analysis based on the stratified Cox’s proportional hazards model, which is the standard approach taken by the scholars in the party leadership literature, the kernel regularized least squares (KRLS) model, and kernel regression with mixed multivariate data as a feature selection method. The results show conflicting evidence, which suggests that this study requires further examination of the conflicting evidence and a more careful application of the methods.
