@@ -1,0 +1,283 @@
+---
+title: "PSTAT 262FE - Project"
+author: "Selin Karabulut"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+setwd("~/Desktop/SPRING 2022/PSTAT262FE/project")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#load libraries
+
+library(dplyr)
+library(readxl)
+library(survival)
+library(survminer)
+library(lubridate)
+library(gtsummary)
+library(broom)
+library(ggplot2)
+library(ggfortify)
+library(ranger)
+```
+
+
+```{r}
+#load data
+data <-read_excel("PSTAT262FE_data.xlsx")
+data <- na.omit(data)
+```
+
+
+```{r}
+#replace all values equal to M nad F in 'sex' column with 0 and 1
+data$sex[data$sex == 'M'] <- 0
+data$sex[data$sex == 'F'] <- 1
+
+#view updated data frame
+data
+str(data)
+```
+
+```{r}
+data$sex <- as.numeric(data$sex)                                 # Convert string to numeric in R
+str(data)
+```
+
+
+
+
+
+
+# Cox regression
+
+```{r}
+cfit1 <- coxph(Surv(tenure, status)~sex, data=data)
+cfit1
+```
+
+```{r}
+cfit2 <- coxph(Surv(tenure, status)~sex + age + party_system + levofdem + histofdem +sysofgov + political_rights+ civil_liberties, data=data)
+summary(cfit2)
+```
+
+
+```{r}
+coxph(Surv(tenure, status)~sex + age + party_system + levofdem + histofdem +sysofgov + political_rights+ civil_liberties, data=data) %>% 
+  gtsummary::tbl_regression(exp = TRUE) 
+```
+
+
+```{r}
+broom::tidy(coxph(Surv(tenure, status)~sex + age + party_system + levofdem + histofdem +sysofgov + political_rights+ civil_liberties, data=data), 
+  exp = TRUE
+  ) %>% 
+  knitr::kable()
+```
+
+
+
+```{r}
+ggforest(cfit2, data = data)
+```
+
+```{r}
+# Checking Proportional Hazards
+cox.zph(cfit2)
+```
+
+
+
+```{r}
+par(mfrow=c(2, 2))
+plot(cox.zph(cfit2))
+```
+
+
+```{r}
+cox_fit <- survfit(cfit2)
+#plot(cox_fit, main = "cph model", xlab="Days")
+autoplot(cox_fit)
+```
+
+
+```{r}
+aa_fit <-aareg(Surv(tenure, status)~sex + age + party_system + levofdem + histofdem +sysofgov + political_rights+ civil_liberties, data=data)
+aa_fit
+#summary(aa_fit)  # provides a more complete summary of results
+autoplot(aa_fit)
+```
+
+```{r}
+# ranger model
+r_fit <- ranger(Surv(tenure, status)~sex + age + party_system + levofdem + histofdem +sysofgov + political_rights+ civil_liberties, data=data, mtry = 4, importance = "permutation",splitrule = "extratrees",verbose = TRUE)
+summary(r_fit)
+```
+
+```{r}
+vi <- data.frame(sort(round(r_fit$variable.importance, 4), decreasing = TRUE))
+names(vi) <- "importance"
+head(vi)
+```
+
+
+```{r}
+cat("Prediction Error = 1 - Harrell's c-index = ", r_fit$prediction.error)
+```
+
+
+
+
+
+# KRLS
+
+```{r}
+library(pROC)
+library(lattice)
+library(KRLS)
+library(boot)
+```
+
+
+
+
+```{r}
+covars=c("sex", "age", "party_system", "levofdem", "histofdem", "sysofgov", "political_rights", "civil_liberties")
+```
+
+```{r}
+krlsout=krls(y=data[,"tenure"],X=data[,covars],print.level=0)
+summary(krlsout)
+```
+
+
+```{r}
+plot(krlsout)
+```
+
+
+
+
+
+
+# Kernel Regression with Mixed Data Types
+
+
+
+```{r}
+#load data
+data <-read_excel("PSTAT262FE_data_1.xlsx")
+data <- na.omit(data)
+```
+
+
+```{r}
+#replace all values equal to M nad F in 'sex' column with 0 and 1
+data$sex[data$sex == 'M'] <- 0
+data$sex[data$sex == 'F'] <- 1
+
+#view updated data frame
+data
+str(data)
+```
+
+```{r}
+data$sex <- as.numeric(data$sex)                                 # Convert string to numeric in R
+str(data)
+```
+
+
+```{r}
+# The predictors contain a mix of unordered, ordered, and continuous variables
+# Bandwidth by CV for local constant -- use only two starts to reduce the
+# computation time
+bwData <- np::npregbw(formula = tenure ~ factor(sex) + age + factor(party_system) + ordered(levofdem) + histofdem + factor(sysofgov) + ordered(political_rights) + ordered(civil_liberties), data = data, regtype = "lc", nmulti = 2)
+bwData
+```
+
+```{r}
+# Regression
+fit <- np::npreg(bwData)
+summary(fit)
+```
+
+
+
+
+```{r}
+apply(data[c("sex", "age", "party_system", "levofdem", "histofdem", "sysofgov","political_rights", "civil_liberties")], 2, median)
+```
+
+
+
+```{r}
+# Bootstrap confidence bands
+par(mar=c(1,1,1,1))
+plot(bwData, plot.errors.method="bootstrap", plot.errors.type="quantile")
+dev.off()
+```
+
+```{r}
+# Asymptotic confidence bands for the marginal effects of each predictor on the response
+par(mfrow = c(2, 3))
+plot(fit, plot.errors.method = "asymptotic", common.scale = FALSE,plot.par.mfrow = FALSE)
+dev.off
+```
+
+
+```{r}
+# Recall that in $mean we had the regression evaluated at the evaluation points, by default the sample of the predictors, so in this case the same as the fitted values
+head(fit$mean)
+```
+
+
+```{r}
+# Prediction for the first 3 points + standard errors
+pred <- predict(fit, newdata = data[1:3, ], se.fit = TRUE)
+```
+
+
+```{r}
+# Approximate (based on assuming asymptotic normality) 100(1 - alpha)% CI for
+# the conditional mean of the first 3 points
+alpha <- 0.05
+pred$fit + (qnorm(1 - alpha / 2) * pred$se.fit) %o% c(-1, 1)
+```
+
+
+```{r}
+# Bandwidth by CV for local linear estimator
+#by default use 5 starts, computationally intensive
+bwData1 <- np::npregbw(formula = tenure ~ factor(sex) + age + factor(party_system) + ordered(levofdem) + histofdem + factor(sysofgov) + ordered(political_rights) + ordered(civil_liberties), data = data, regtype = "ll")
+bwData1
+```
+
+
+```{r}
+# Regression
+fita <- np::npreg(bwData1)
+summary(fita)
+```
+
+
+```{r}
+# polynomial kernels
+bwData2 <- np::npregbw(formula = tenure ~ factor(sex) + age + factor(party_system) + ordered(levofdem) + histofdem + factor(sysofgov) + ordered(political_rights) + ordered(civil_liberties), data = data, nmulti = 2)
+bwData2
+```
+
+
+```{r}
+# Regression
+fitb <- np::npreg(bwData2)
+summary(fitb)
+```
+
+
+
+
